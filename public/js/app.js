@@ -1,23 +1,40 @@
-(function(/*! Brunch !*/) {
+(function() {
   'use strict';
 
-  var globals = typeof window !== 'undefined' ? window : global;
+  var globals = typeof window === 'undefined' ? global : window;
   if (typeof globals.require === 'function') return;
 
   var modules = {};
   var cache = {};
+  var aliases = {};
+  var has = ({}).hasOwnProperty;
 
-  var has = function(object, name) {
-    return ({}).hasOwnProperty.call(object, name);
+  var endsWith = function(str, suffix) {
+    return str.indexOf(suffix, str.length - suffix.length) !== -1;
   };
 
-  var expand = function(root, name) {
-    var results = [], parts, part;
-    if (/^\.\.?(\/|$)/.test(name)) {
-      parts = [root, name].join('/').split('/');
-    } else {
-      parts = name.split('/');
+  var _cmp = 'components/';
+  var unalias = function(alias, loaderPath) {
+    var start = 0;
+    if (loaderPath) {
+      if (loaderPath.indexOf(_cmp) === 0) {
+        start = _cmp.length;
+      }
+      if (loaderPath.indexOf('/', start) > 0) {
+        loaderPath = loaderPath.substring(start, loaderPath.indexOf('/', start));
+      }
     }
+    var result = aliases[alias + '/index.js'] || aliases[loaderPath + '/deps/' + alias + '/index.js'];
+    if (result) {
+      return _cmp + result.substring(0, result.length - '.js'.length);
+    }
+    return alias;
+  };
+
+  var _reg = /^\.\.?(\/|$)/;
+  var expand = function(root, name) {
+    var results = [], part;
+    var parts = (_reg.test(name) ? root + '/' + name : name).split('/');
     for (var i = 0, length = parts.length; i < length; i++) {
       part = parts[i];
       if (part === '..') {
@@ -34,9 +51,8 @@
   };
 
   var localRequire = function(path) {
-    return function(name) {
-      var dir = dirname(path);
-      var absolute = expand(dir, name);
+    return function expanded(name) {
+      var absolute = expand(dirname(path), name);
       return globals.require(absolute, path);
     };
   };
@@ -51,21 +67,26 @@
   var require = function(name, loaderPath) {
     var path = expand(name, '.');
     if (loaderPath == null) loaderPath = '/';
+    path = unalias(name, loaderPath);
 
-    if (has(cache, path)) return cache[path].exports;
-    if (has(modules, path)) return initModule(path, modules[path]);
+    if (has.call(cache, path)) return cache[path].exports;
+    if (has.call(modules, path)) return initModule(path, modules[path]);
 
     var dirIndex = expand(path, './index');
-    if (has(cache, dirIndex)) return cache[dirIndex].exports;
-    if (has(modules, dirIndex)) return initModule(dirIndex, modules[dirIndex]);
+    if (has.call(cache, dirIndex)) return cache[dirIndex].exports;
+    if (has.call(modules, dirIndex)) return initModule(dirIndex, modules[dirIndex]);
 
     throw new Error('Cannot find module "' + name + '" from '+ '"' + loaderPath + '"');
   };
 
-  var define = function(bundle, fn) {
+  require.alias = function(from, to) {
+    aliases[to] = from;
+  };
+
+  require.register = require.define = function(bundle, fn) {
     if (typeof bundle === 'object') {
       for (var key in bundle) {
-        if (has(bundle, key)) {
+        if (has.call(bundle, key)) {
           modules[key] = bundle[key];
         }
       }
@@ -74,21 +95,19 @@
     }
   };
 
-  var list = function() {
+  require.list = function() {
     var result = [];
     for (var item in modules) {
-      if (has(modules, item)) {
+      if (has.call(modules, item)) {
         result.push(item);
       }
     }
     return result;
   };
 
+  require.brunch = true;
+  require._cache = cache;
   globals.require = require;
-  globals.require.define = define;
-  globals.require.register = define;
-  globals.require.list = list;
-  globals.require.brunch = true;
 })();
 require.register("actions/base", function(exports, require, module) {
 module.exports = function(constants) {
@@ -157,13 +176,14 @@ module.exports = {
 
 require.register("constants/todo", function(exports, require, module) {
 module.exports = {
-    change: "todos-changed",
+    changed: "todos-changed",
     
     all: "all-todos",
     create: "create-todo",
     update: "update-todo",
     remove: "remove-todo"
 };
+
 });
 
 require.register("dispatcher", function(exports, require, module) {
@@ -182,7 +202,6 @@ module.exports = new EventEmitter();
 });
 
 require.register("initialize", function(exports, require, module) {
-/** @jsx React.DOM */
 /* jshint node: true */
 "use strict";
 
@@ -197,79 +216,10 @@ $(function () {
 });
 
 require.register("pages/todo/index", function(exports, require, module) {
-/** @jsx React.DOM */
-/* jshint node: true */
-"use strict";
 
-var React = require("react"),
-    _ = require("underscore"),
-    
-    List = require("./list"),
-    Modal = require("./modal"),
-    
-    dispatcher = require("dispatcher"),
-    emitter = require("emitter"),
-    constants = require("constants").todo;
-
-module.exports = React.createClass({displayName: 'exports',
-    getInitialState: function() {
-        return {
-            todos: []
-        }  
-    },
-
-    componentWillMount: function() {
-        emitter.on(constants.changed, function(todos) {
-            this.setState({ todos: todos });
-        }.bind(this));
-    },
-    
-    componentDidMount: function() {
-        dispatcher.dispatch({ type: constants.all });
-    },
-    
-    componentsWillUnmount: function() {
-        emitter.off(constants.all);
-    },
-    
-    create: function() {
-        this.refs.create.show();
-    },
-    
-    renderList: function(complete) {
-        return React.createElement(List, {todos: _.filter(this.state.todos, function(x) { return x.isComplete === complete; })});
-    },
-    
-    render: function() {
-        return React.createElement("div", {className: "container"}, 
-            React.createElement("div", {className: "row"}, 
-                React.createElement("div", {className: "col-md-8"}, 
-                    React.createElement("h2", null, "Todo List")
-                ), 
-                React.createElement("div", {className: "col-md-4"}, 
-                    React.createElement("button", {type: "button", className: "btn btn-primary pull-right spacing-top", onClick: this.create}, "New Task")
-                )
-            ), 
-                    
-            React.createElement("div", {className: "row"}, 
-                React.createElement("div", {className: "col-md-6"}, 
-                    React.createElement("h3", {className: "spacing-bottom"}, "Incomplete"), 
-                    this.renderList(false)
-                ), 
-                React.createElement("div", {className: "col-md-6"}, 
-                    React.createElement("h3", {className: "spacing-bottom"}, "Complete"), 
-                    this.renderList(true)
-                )
-            ), 
-            
-            React.createElement(Modal, {ref: "create"})
-        );
-    }
-});
 });
 
-require.register("pages/todo/list/index", function(exports, require, module) {
-/** @jsx React.DOM */
+;require.register("pages/todo/list/index", function(exports, require, module) {
 /* jshint node: true */
 "use strict";
 
@@ -292,7 +242,6 @@ module.exports = React.createClass({displayName: 'exports',
 });
 
 require.register("pages/todo/list/item", function(exports, require, module) {
-/** @jsx React.DOM */
 /* jshint node: true */
 "use strict";
 
@@ -312,7 +261,6 @@ module.exports = React.createClass({displayName: 'exports',
 });
 
 require.register("pages/todo/modal", function(exports, require, module) {
-/** @jsx React.DOM */
 "use strict";
 
 var React = require("react"),
