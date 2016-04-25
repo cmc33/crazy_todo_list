@@ -410,7 +410,107 @@ var _ = require("underscore"),
     dispatcher = require("dispatcher"),
     constants = require("constants");
 
+module.exports = function(url, constants) {
+    this._url = url;
+    this._collection = [];
+    
+    $.get(this._url).then(function(data) {
+        this._collection = data;
+        _notify.call(this);
+    }.bind(this));
+    
+    dispatcher.register(function(payload) {
+        switch (payload.type) {
+            case constants.all:
+                this._all();
+                break;
+                
+            case constants.update:
+                this._update(payload.content);
+                break;
+                
+            case constants.create:
+                this._create(payload.content);
+                break;
+        }
+    }.bind(this));
+    
+    this._all = function() {
+        _notify.call(this);
+    }.bind(this);
+    
+    this._update = function(content) {
+        var found = _.find(this._collection, function(x) { return x.id === content.id; });
+        for (var name in found)
+            found[name] = content[name];
+        _notify.call(this);
+    };
+    
+    this._create = function(content) {
+        content.id = _.max(this._collection, function(x) { return x.id; }).id + 1;
+        this._collection.push(content);
+        _notify.call(this);
+    }
+    
+    function _notify() {
+        emitter.emit(constants.changed, this._collection);
+    }
+};
+});
 
+require.register("stores/index", function(exports, require, module) {
+module.exports = {
+    todo: require("stores/todo")
+};
+});
+
+require.register("stores/todo", function(exports, require, module) {
+var Base = require("./base"),
+    constants = require("constants").todo;
+
+module.exports = new Base("fixtures/todos.json", constants);
+});
+
+require.register("utilities/errorHandler", function(exports, require, module) {
+var _ = require("underscore");
+
+module.exports = {
+	handle: function(model) {
+		var result = {}, flags = model.all(), errors = model.validate(), count = 0, message = "";
+		_.each(errors, function(error) {
+			flags[error.key] = true;
+			message = ++count === 1 ? error.message : "Please fix the outlined fields.";
+		});
+		
+		return { flags: flags, message: message, any: count > 0 };
+	}
+}
+});
+
+;require.register("utilities/validation", function(exports, require, module) {
+module.exports = {
+	required: function(value) {
+		return value !== undefined && value !== "";
+	},
+	
+	phone: function(value) {
+		if (value)
+			value = value.replace(/[\D]/g, "");
+		return value === undefined || value.length === 10;
+	},
+	
+	email: function(value) {
+		return new RegExp(/^(([^<>()[\]\\.,;:\s@\"]+(\.[^<>()[\]\\.,;:\s@\"]+)*)|(\".+\"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/).test(value);
+	},
+	
+	positiveNumber: function(value) {
+		if (value === undefined || value === "")
+			return true;
+		
+		value = parseInt(value);
+		return !isNaN(value) && value >= 1;
+	}
+}
 });
 
 ;
