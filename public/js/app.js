@@ -216,10 +216,77 @@ $(function () {
 });
 
 require.register("pages/todo/index", function(exports, require, module) {
+/* jshint node: true */
+"use strict";
 
+var React = require("react"),
+    _ = require("underscore"),
+    
+    List = require("./list"),
+    Modal = require("./modal"),
+    
+    dispatcher = require("dispatcher"),
+    emitter = require("emitter"),
+    constants = require("constants").todo;
+
+module.exports = React.createClass({displayName: 'exports',
+    getInitialState: function() {
+        return {
+            todos: []
+        }  
+    },
+
+    componentWillMount: function() {
+        emitter.on(constants.changed, function(todos) {
+            this.setState({ todos: todos });
+        }.bind(this));
+    },
+    
+    componentDidMount: function() {
+        dispatcher.dispatch({ type: constants.all });
+    },
+    
+    componentsWillUnmount: function() {
+        emitter.off(constants.all);
+    },
+    
+    create: function() {
+        this.refs.create.show();
+    },
+    
+    renderList: function(complete) {
+        return React.createElement(List, {todos: _.filter(this.state.todos, function(x) { return x.isComplete === complete; })});
+    },
+    
+    render: function() {
+        return React.createElement("div", {className: "container"}, 
+            React.createElement("div", {className: "row"}, 
+                React.createElement("div", {className: "col-md-8"}, 
+                    React.createElement("h2", null, "Todo List")
+                ), 
+                React.createElement("div", {className: "col-md-4"}, 
+                    React.createElement("button", {type: "button", className: "btn btn-primary pull-right spacing-top", onClick: this.create}, "New Task")
+                )
+            ), 
+                    
+            React.createElement("div", {className: "row"}, 
+                React.createElement("div", {className: "col-md-6"}, 
+                    React.createElement("h3", {className: "spacing-bottom"}, "Incomplete"), 
+                    this.renderList(false)
+                ), 
+                React.createElement("div", {className: "col-md-6"}, 
+                    React.createElement("h3", {className: "spacing-bottom"}, "Complete"), 
+                    this.renderList(true)
+                )
+            ), 
+            
+            React.createElement(Modal, {ref: "create"})
+        );
+    }
+});
 });
 
-;require.register("pages/todo/list/index", function(exports, require, module) {
+require.register("pages/todo/list/index", function(exports, require, module) {
 /* jshint node: true */
 "use strict";
 
@@ -343,107 +410,7 @@ var _ = require("underscore"),
     dispatcher = require("dispatcher"),
     constants = require("constants");
 
-module.exports = function(url, constants) {
-    this._url = url;
-    this._collection = [];
-    
-    $.get(this._url).then(function(data) {
-        this._collection = data;
-        _notify.call(this);
-    }.bind(this));
-    
-    dispatcher.register(function(payload) {
-        switch (payload.type) {
-            case constants.all:
-                this._all();
-                break;
-                
-            case constants.update:
-                this._update(payload.content);
-                break;
-                
-            case constants.create:
-                this._create(payload.content);
-                break;
-        }
-    }.bind(this));
-    
-    this._all = function() {
-        _notify.call(this);
-    }.bind(this);
-    
-    this._update = function(content) {
-        var found = _.find(this._collection, function(x) { return x.id === content.id; });
-        for (var name in found)
-            found[name] = content[name];
-        _notify.call(this);
-    };
-    
-    this._create = function(content) {
-        content.id = _.max(this._collection, function(x) { return x.id; }).id + 1;
-        this._collection.push(content);
-        _notify.call(this);
-    }
-    
-    function _notify() {
-        emitter.emit(constants.changed, this._collection);
-    }
-};
-});
 
-require.register("stores/index", function(exports, require, module) {
-module.exports = {
-    todo: require("stores/todo")
-};
-});
-
-require.register("stores/todo", function(exports, require, module) {
-var Base = require("./base"),
-    constants = require("constants").todo;
-
-module.exports = new Base("fixtures/todos.json", constants);
-});
-
-require.register("utilities/errorHandler", function(exports, require, module) {
-var _ = require("underscore");
-
-module.exports = {
-	handle: function(model) {
-		var result = {}, flags = model.all(), errors = model.validate(), count = 0, message = "";
-		_.each(errors, function(error) {
-			flags[error.key] = true;
-			message = ++count === 1 ? error.message : "Please fix the outlined fields.";
-		});
-		
-		return { flags: flags, message: message, any: count > 0 };
-	}
-}
-});
-
-;require.register("utilities/validation", function(exports, require, module) {
-module.exports = {
-	required: function(value) {
-		return value !== undefined && value !== "";
-	},
-	
-	phone: function(value) {
-		if (value)
-			value = value.replace(/[\D]/g, "");
-		return value === undefined || value.length === 10;
-	},
-	
-	email: function(value) {
-		return new RegExp(/^(([^<>()[\]\\.,;:\s@\"]+(\.[^<>()[\]\\.,;:\s@\"]+)*)|(\".+\"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/).test(value);
-	},
-	
-	positiveNumber: function(value) {
-		if (value === undefined || value === "")
-			return true;
-		
-		value = parseInt(value);
-		return !isNaN(value) && value >= 1;
-	}
-}
 });
 
 ;
