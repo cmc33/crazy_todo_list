@@ -28,3 +28,4 @@ exclude_paths:
 - config/
 - test/
 - vendor/
+- public/js/vendor.js
